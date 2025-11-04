@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "mux3by3",
+			"path": "../mux3by3"
+		},
+		{
+			"name": "mux3by3datastore",
+			"path": "../mux3by3datastore"
+		}
+	],
+	"settings": {}
+}

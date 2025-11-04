@@ -1,0 +1,58 @@
+import serial
+import numpy as np
+import time
+
+PORT = '/dev/cu.usbmodem150585901'
+BAUDRATE = 115200
+
+ser = serial.Serial(PORT, BAUDRATE)
+print("Listening on", PORT)
+
+frames = []
+frame = []
+#start_time = time.time()
+
+#timelen = 10
+
+#print("Recording... ", timelen, " s")
+
+while True:
+    line = ser.readline().decode().strip()
+
+    if line == "flag":
+        if len(frame) == 48: 
+            frames.append(np.array(frame, dtype=np.uint8))
+        frame = []
+
+        # Stop after 10 seconds
+        #if time.time() - start_time >= timelen:
+        #    break
+
+    else:
+        if line:
+            row = [int(x) for x in line.split(',')]
+            frame.append(row)
+
+ser.close()
+
+frames = np.array(frames)
+np.savez("tactile_data.npz", frames=frames)
+
+print(f"Saved {frames.shape[0]} frames to tactile_data.npz")
+
+#below is  from plotting.py
+data = np.load("tactile_data.npz")["frames"]
+
+print(f"Loaded {data.shape[0]} frames of {data.shape[1]}x{data.shape[2]}")
+
+plt.ion()
+fig, ax = plt.subplots()
+
+for i, frame in enumerate(data):
+    ax.clear()
+    ax.imshow(frame, cmap="gray_r", vmin=0, vmax=1)  # white=1, black=0
+    ax.set_title(f"Frame {i+1}/{data.shape[0]}")
+    plt.pause(0.001)
+
+plt.ioff()
+plt.show()
