@@ -6,41 +6,33 @@ PORT = '/dev/cu.usbmodem150585901'
 BAUD = 115200
 ROWS, COLS = 48, 48
 
-ser = serial.Serial(PORT, BAUD, timeout=1)
-print(f"Connected to {PORT}")
+ser = serial.Serial(PORT, BAUD)
+frames = []
+frame = []
 
+while True:
+    line = ser.readline().decode(errors='ignore').strip()
+    if line == "done":
+        break
+    elif line == "flag":
+        if len(frame) == ROWS:
+            frames.append(np.array(frame, dtype=np.uint8))
+        frame = []
+    elif line:
+        row = [int(x) for x in line.split(',')]
+        frame.append(row)
+
+frames = np.array(frames)
+np.savez("captured_frames.npz", frames=frames)
+print(f"Saved {frames.shape} to captured_frames.npz")
+
+# Optional: visualize
 plt.ion()
 fig, ax = plt.subplots()
-im = ax.imshow(np.zeros((ROWS, COLS)), cmap='gray_r', vmin=0, vmax=1)
-#ax.set_title("48×48 tactile array")
-plt.show(block=False)
-
-frame = []
-while True:
-    try:
-        line = ser.readline().decode(errors='ignore').strip()
-        if not line:
-            continue
-
-        if line == "flag":
-            if len(frame) == ROWS:
-                arr = np.array(frame, dtype=np.uint8)
-                im.set_data(arr)
-                plt.pause(0.001)
-            frame = []
-
-        else:
-            try:
-                row = [int(x) for x in line.split(',')]
-                if len(row) == COLS:
-                    frame.append(row)
-            except ValueError:
-                continue
-
-    except KeyboardInterrupt:
-        print("\nStopped by user.")
-        break
-
-ser.close()
+for i, f in enumerate(frames):
+    ax.clear()
+    ax.imshow(f, cmap="gray_r", vmin=0, vmax=1)
+    ax.set_title(f"Frame {i+1}/{len(frames)}")
+    plt.pause(0.05)
 plt.ioff()
 plt.show()
