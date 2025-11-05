@@ -116,7 +116,7 @@ const uint8_t READmuxEnPins[3] = {16, 17, 18};
 const uint8_t READmuxSelPins[4] = {19, 20, 21, 22};
 const uint8_t READsignalPin = 14;
 
-// --- Matrix config ---
+
 const int ROWS = 48;
 const int COLS = 48;
 const int FRAMES = 10;
@@ -171,7 +171,6 @@ void setup() {
 }
 
 void loop() {
-  // --- Capture ---
   for (int f = 0; f < FRAMES; f++) {
     int rowIndex = 0;
     for (uint8_t mux = 0; mux < 3; mux++) {
@@ -186,7 +185,7 @@ void loop() {
           for (uint8_t rch = 0; rch < 16; rch++) {
             READselectChannel(rch);
             delayMicroseconds(50);
-            matrix[f][rowIndex][colIndex] = !digitalReadFast(READsignalPin);
+            matrix[f][rowIndex][colIndex] = digitalReadFast(READsignalPin);
             colIndex++;
           }
         }
@@ -201,7 +200,7 @@ void loop() {
   for (int f = 0; f < FRAMES; f++) {
     for (int r = 0; r < ROWS; r++) {
       for (int c = 0; c < COLS; c++) {
-        Serial.print(matrix[f][r][c] ? 0 : 1);
+        Serial.print(matrix[f][r][c] ? 1 : 0);
         if (c < COLS - 1) Serial.print(',');
       }
       Serial.println();
