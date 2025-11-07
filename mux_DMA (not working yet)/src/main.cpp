@@ -119,7 +119,7 @@ const uint8_t READsignalPin = 14;
 
 const int ROWS = 48;
 const int COLS = 48;
-const int FRAMES = 200;
+const int FRAMES = 60;
 
 std::vector<std::vector<std::vector<bool>>> matrix(
   FRAMES, std::vector<std::vector<bool>>(ROWS, std::vector<bool>(COLS, false))
@@ -195,7 +195,10 @@ void sendMatrixBinary() {
   Serial.write("DONE", 4);
 }
 
+
+
 void loop() {
+  while (1) {
   for (int f = 0; f < FRAMES; f++) {
     int rowIndex = 0;
     for (uint8_t mux = 0; mux < 3; mux++) {
@@ -222,6 +225,6 @@ void loop() {
   }
   sendMatrixBinary();
 
-  Serial.println("Done...");
+  Serial.println("Done..."); }
   //while (1) {};
-}
+} 
