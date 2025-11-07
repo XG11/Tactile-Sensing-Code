@@ -1,38 +1,31 @@
-import serial
-import numpy as np
-import matplotlib.pyplot as plt
+import serial, struct, numpy as np, matplotlib.pyplot as plt, matplotlib.animation as animation
 
 PORT = '/dev/cu.usbmodem150585901'
 BAUD = 115200
-ROWS, COLS = 48, 48
-
 ser = serial.Serial(PORT, BAUD)
-frames = []
-frame = []
 
 while True:
-    line = ser.readline().decode(errors='ignore').strip()
-    if line == "done":
+    if ser.read(4) == b'DATA':
         break
-    elif line == "flag":
-        if len(frame) == ROWS:
-            frames.append(np.array(frame, dtype=np.uint8))
-        frame = []
-    elif line:
-        row = [int(x) for x in line.split(',')]
-        frame.append(row)
 
-frames = np.array(frames)
-np.savez("captured_frames.npz", frames=frames)
-print(f"Saved {frames.shape} to captured_frames.npz")
+FRAMES = struct.unpack('i', ser.read(4))[0]
+ROWS   = struct.unpack('i', ser.read(4))[0]
+COLS   = struct.unpack('i', ser.read(4))[0]
+print(f"Frames={FRAMES}, Rows={ROWS}, Cols={COLS}")
 
-# Optional: visualize
-plt.ion()
+raw = ser.read(FRAMES * ROWS * COLS)
+data = np.frombuffer(raw, dtype=np.uint8).reshape((FRAMES, ROWS, COLS))
+assert ser.read(4) == b'DONE'
+
 fig, ax = plt.subplots()
-for i, f in enumerate(frames):
-    ax.clear()
-    ax.imshow(f, cmap="gray_r", vmin=0, vmax=1)
-    ax.set_title(f"Frame {i+1}/{len(frames)}")
-    plt.pause(0.05)
-plt.ioff()
+im = ax.imshow(data[0], cmap='gray', vmin=0, vmax=1)
+
+#def update(i):
+ #   im.set_array(data[i])
+  #  ax.set_title(f"Frame {i}")
+   # return [im]
+
+ani = animation.FuncAnimation(fig, im, frames=FRAMES, interval=50, blit=False)
 plt.show()
+
+

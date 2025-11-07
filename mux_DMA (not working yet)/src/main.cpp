@@ -119,7 +119,7 @@ const uint8_t READsignalPin = 14;
 
 const int ROWS = 48;
 const int COLS = 48;
-const int FRAMES = 10;
+const int FRAMES = 200;
 
 std::vector<std::vector<std::vector<bool>>> matrix(
   FRAMES, std::vector<std::vector<bool>>(ROWS, std::vector<bool>(COLS, false))
@@ -170,6 +170,31 @@ void setup() {
   Serial.println("Ready...");
 }
 
+
+void sendMatrixBinary() {
+  while (!Serial) delay(10);
+  Serial.flush();
+
+  // Header
+  Serial.write("DATA", 4);
+  Serial.write((uint8_t*)&FRAMES, sizeof(FRAMES));
+  Serial.write((uint8_t*)&ROWS, sizeof(ROWS));
+  Serial.write((uint8_t*)&COLS, sizeof(COLS));
+
+  // Flatten and send
+  for (int f = 0; f < FRAMES; f++) {
+    for (int r = 0; r < ROWS; r++) {
+      for (int c = 0; c < COLS; c++) {
+        uint8_t val = matrix[f][r][c] ? 1 : 0;
+        Serial.write(&val, 1);
+      }
+    }
+  }
+
+  // Footer
+  Serial.write("DONE", 4);
+}
+
 void loop() {
   for (int f = 0; f < FRAMES; f++) {
     int rowIndex = 0;
@@ -177,14 +202,14 @@ void loop() {
       enableMux(mux);
       for (uint8_t ch = 0; ch < 16; ch++) {
         selectChannel(ch);
-        delayMicroseconds(50);
+        delayMicroseconds(1);
 
         int colIndex = 0;
         for (uint8_t rmux = 0; rmux < 3; rmux++) {
           READenableMux(rmux);
           for (uint8_t rch = 0; rch < 16; rch++) {
             READselectChannel(rch);
-            delayMicroseconds(50);
+            delayMicroseconds(1);
             matrix[f][rowIndex][colIndex] = digitalReadFast(READsignalPin);
             colIndex++;
           }
@@ -192,24 +217,11 @@ void loop() {
         rowIndex++;
       }
     }
-    delay(100);
+    //delayMicroseconds(1);
+    //delay(100);
   }
-
-
-
-  for (int f = 0; f < FRAMES; f++) {
-    for (int r = 0; r < ROWS; r++) {
-      for (int c = 0; c < COLS; c++) {
-        Serial.print(matrix[f][r][c] ? 1 : 0);
-        if (c < COLS - 1) Serial.print(',');
-      }
-      Serial.println();
-    }
-    Serial.println("flag");
-    delay(2);
-  }
+  sendMatrixBinary();
 
   Serial.println("Done...");
-
-  while (1);
+  //while (1) {};
 }
