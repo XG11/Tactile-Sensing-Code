@@ -116,7 +116,7 @@ while True:
     t_end = time.time()
     footer = ser.read(4)
 
-    if footer != b'DONE' or len(raw) < nbytes:
+    if len(raw) < nbytes:
         print("Incomplete block, skipping...")
         continue
 

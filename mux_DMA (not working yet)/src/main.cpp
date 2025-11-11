@@ -315,7 +315,7 @@ void loop() {
 
     sendMatrixBinary();
 
-    Serial.println("Done...");
+    //Serial.println("Done...");
     //delay(10); // optional pacing
   }
 }
