@@ -119,7 +119,10 @@ const uint8_t READsignalPin = 14;
 
 const int ROWS = 48;
 const int COLS = 48;
-const int FRAMES = 60;
+const int FRAMES = 20;
+const int DEBOUNCE_FRAMES = 2;
+std::vector<std::vector<int>> debounceCounter(ROWS, std::vector<int>(COLS, 0));
+std::vector<std::vector<bool>> stableState(ROWS, std::vector<bool>(COLS, false));
 
 std::vector<std::vector<std::vector<bool>>> matrix(
   FRAMES, std::vector<std::vector<bool>>(ROWS, std::vector<bool>(COLS, false))
@@ -170,7 +173,7 @@ void setup() {
   Serial.println("Ready...");
 }
 
-
+/*
 void sendMatrixBinary() {
   while (!Serial) delay(10);
   Serial.flush();
@@ -187,16 +190,48 @@ void sendMatrixBinary() {
       for (int c = 0; c < COLS; c++) {
         uint8_t val = matrix[f][r][c] ? 1 : 0;
         Serial.write(&val, 1);
+
+  // Footer
+  Serial.write("DONE", 4);
+} */
+
+void sendMatrixBinary() {
+  while (!Serial) delay(10);
+  Serial.flush();
+
+  // Header
+  Serial.write("DATA", 4);
+  Serial.write((uint8_t*)&FRAMES, sizeof(FRAMES));
+  Serial.write((uint8_t*)&ROWS, sizeof(ROWS));
+  Serial.write((uint8_t*)&COLS, sizeof(COLS));
+
+  // --- Optimized buffered sending ---
+  uint8_t buffer[256];
+  int idx = 0;
+
+  for (int f = 0; f < FRAMES; f++) {
+    for (int r = 0; r < ROWS; r++) {
+      for (int c = 0; c < COLS; c++) {
+        buffer[idx++] = matrix[f][r][c] ? 1 : 0;
+        if (idx >= sizeof(buffer)) {
+          Serial.write(buffer, idx);
+          idx = 0;
+        }
       }
     }
   }
 
+  // Send remaining bytes
+  if (idx > 0) Serial.write(buffer, idx);
+
   // Footer
   Serial.write("DONE", 4);
+  Serial.send_now();  // force USB flush immediately
 }
 
 
 
+/*
 void loop() {
   while (1) {
   for (int f = 0; f < FRAMES; f++) {
@@ -223,8 +258,64 @@ void loop() {
     //delayMicroseconds(1);
     //delay(100);
   }
+
+  
   sendMatrixBinary();
 
   Serial.println("Done..."); }
   //while (1) {};
-} 
+} */
+
+void loop() {
+  while (1) {
+    // --- Capture FRAMES frames ---
+    for (int f = 0; f < FRAMES; f++) {
+      int rowIndex = 0;
+      for (uint8_t mux = 0; mux < 3; mux++) {
+        enableMux(mux);
+        for (uint8_t ch = 0; ch < 16; ch++) {
+          selectChannel(ch);
+          delayMicroseconds(1);
+
+          int colIndex = 0;
+          for (uint8_t rmux = 0; rmux < 3; rmux++) {
+            READenableMux(rmux);
+            for (uint8_t rch = 0; rch < 16; rch++) {
+              READselectChannel(rch);
+              delayMicroseconds(1);
+              matrix[f][rowIndex][colIndex] = digitalReadFast(READsignalPin);
+              colIndex++;
+            }
+          }
+          rowIndex++;
+        }
+      }
+    }
+
+    for (int r = 0; r < ROWS; r++) {
+      for (int c = 0; c < COLS; c++) {
+        bool current = matrix[FRAMES - 1][r][c];
+        if (current == stableState[r][c]) {
+          debounceCounter[r][c] = 0;
+        } else {
+          debounceCounter[r][c]++;
+          if (debounceCounter[r][c] >= DEBOUNCE_FRAMES) {
+            stableState[r][c] = current;
+            debounceCounter[r][c] = 0;
+          }
+        }
+      }
+    }
+
+    for (int r = 0; r < ROWS; r++) {
+      for (int c = 0; c < COLS; c++) {
+        matrix[FRAMES - 1][r][c] = stableState[r][c];
+      }
+    }
+
+    sendMatrixBinary();
+
+    Serial.println("Done...");
+    //delay(10); // optional pacing
+  }
+}

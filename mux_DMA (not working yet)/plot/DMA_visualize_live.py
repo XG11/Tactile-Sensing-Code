@@ -102,7 +102,6 @@ plt.ion()
 plt.show()
 
 while True:
-    # --- Wait for new data block ---
     hdr = ser.read(4)
     if hdr != b'DATA':
         continue
@@ -131,7 +130,7 @@ while True:
 
     # --- Pick several evenly spaced frames for display ---
     # e.g., last 3 frames spaced by ~FRAMES/3 apart
-    num_to_show = 3
+    num_to_show = 5
     step = max(1, FRAMES // (num_to_show + 1))
     frame_indices = [FRAMES - (i+1)*step for i in range(num_to_show)]
     frame_indices = [i for i in frame_indices if i >= 0]
@@ -140,4 +139,4 @@ while True:
         frame = data[idx]
         im.set_array(frame)
         ax.set_title(f"Block frame {idx}/{FRAMES}")
-        plt.pause(0.001)
+        plt.pause(0.0001)
