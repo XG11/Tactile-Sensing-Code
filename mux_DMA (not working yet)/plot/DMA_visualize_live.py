@@ -130,7 +130,7 @@ while True:
 
     # --- Pick several evenly spaced frames for display ---
     # e.g., last 3 frames spaced by ~FRAMES/3 apart
-    num_to_show = 5
+    num_to_show = 2
     step = max(1, FRAMES // (num_to_show + 1))
     frame_indices = [FRAMES - (i+1)*step for i in range(num_to_show)]
     frame_indices = [i for i in frame_indices if i >= 0]

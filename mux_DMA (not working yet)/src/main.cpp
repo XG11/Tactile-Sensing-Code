@@ -275,14 +275,16 @@ void loop() {
         enableMux(mux);
         for (uint8_t ch = 0; ch < 16; ch++) {
           selectChannel(ch);
-          delayMicroseconds(1);
+          //delayMicroseconds(1);
+          delayNanoseconds(1000);
 
           int colIndex = 0;
           for (uint8_t rmux = 0; rmux < 3; rmux++) {
             READenableMux(rmux);
             for (uint8_t rch = 0; rch < 16; rch++) {
               READselectChannel(rch);
-              delayMicroseconds(1);
+              //delayMicroseconds(1);
+              delayNanoseconds(1000);
               matrix[f][rowIndex][colIndex] = digitalReadFast(READsignalPin);
               colIndex++;
             }
