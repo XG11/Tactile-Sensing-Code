@@ -282,7 +282,7 @@ void loop() {
 
         int colIndex = 0;
 
-        // Columns 24–31 → rmux 1, rch 8–15 (8 columns)
+        // Columns 24–31 : rmux 1, rch 8–15 (8 columns)
         READenableMux(1);
         for (uint8_t rch = 8; rch < 16; rch++) {
           READselectChannel(rch);
@@ -290,7 +290,7 @@ void loop() {
           matrix[f][rowIndex][colIndex++] = digitalReadFast(READsignalPin);
         }
 
-        // Columns 32–33 → rmux 2, rch 0–1 (2 columns)
+        // Columns 32–33 -> rmux 2, rch 0–1 (2 columns)
         READenableMux(2);
         for (uint8_t rch = 0; rch < 2; rch++) {
           READselectChannel(rch);
