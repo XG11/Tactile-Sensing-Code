@@ -108,13 +108,13 @@ void loop() {
 #include <vector>
 
 // --- Multiplexer pin setup ---
-const uint8_t muxEnPins[3] = {5, 6, 7};
-const uint8_t muxSelPins[4] = {11, 10, 9, 8};
-const uint8_t signalPin = 3;
+const uint8_t muxEnPins[3] = {3, 4, 5};
+const uint8_t muxSelPins[4] = {19, 18, 17, 16};
+const uint8_t signalPin = 14;
 
-const uint8_t READmuxEnPins[3] = {16, 17, 18};
-const uint8_t READmuxSelPins[4] = {19, 20, 21, 22};
-const uint8_t READsignalPin = 14;
+const uint8_t READmuxEnPins[3] = {0, 1, 2};
+const uint8_t READmuxSelPins[4] = {23, 22, 21, 20};
+const uint8_t READsignalPin = 15;
 
 
 const int ROWS = 48;

@@ -90,7 +90,7 @@ while True:
 
 import serial, struct, numpy as np, matplotlib.pyplot as plt, time
 
-PORT = '/dev/cu.usbmodem150585901'   # adjust for your system
+PORT = '/dev/cu.usbmodem160572101'   # adjust for your system
 BAUD = 115200
 ser = serial.Serial(PORT, BAUD, timeout=2)
 
@@ -100,7 +100,6 @@ im = ax.imshow(np.zeros((48,48)), cmap='gray', vmin=0, vmax=1)
 ax.set_title("Initializing...")
 plt.ion()
 plt.show()
-
 while True:
     hdr = ser.read(4)
     if hdr != b'DATA':
