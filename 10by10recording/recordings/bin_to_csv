@@ -3,11 +3,14 @@ import csv
 from pathlib import Path
 
 
-BIN_FILE = "recordings/run01.bin"
-CSV_FILE = "recordings/run01.csv"
+BIN_FILE = "recordings/run03.bin"
+CSV_FILE = "recordings/run03.csv"
 
 ROWS = 48
 COLS = 48
+
+r0, c0 = 0, 24    # top- corner
+H, W = 10, 10  
 
 raw = np.fromfile(BIN_FILE, dtype=np.uint8)
 
@@ -17,18 +20,23 @@ assert raw.size % frame_size == 0, "Binary file size mismatch"
 
 
 num_frames = raw.size // frame_size
-frames = raw.reshape(num_frames, frame_size)
+frames = raw.reshape(num_frames, ROWS, COLS)
+
+cropped = frames[:, r0:r0+H, c0:c0+W]
+cropped = cropped.reshape(num_frames, H * W)
+
+nodes = cropped.T
 
 print(f"Loaded {num_frames} frames")
 
 with open(CSV_FILE, "w", newline="") as f:
     writer = csv.writer(f)
 
-    header = ["frame_id"] + [f"p{i}" for i in range(frame_size)]
+    header = ["node_id"] + [f"node{i}" for i in range(num_frames)]
     writer.writerow(header)
 
-    for i in range(num_frames):
-        row = [i] + frames[i].tolist()
+    for node_id in range(H * W):
+        row = [node_id] + nodes[node_id].tolist()
         writer.writerow(row)
 
 print(f"CSV written to {CSV_FILE}")

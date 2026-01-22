@@ -5,7 +5,7 @@ PORT = '/dev/cu.usbmodem160572101'
 BAUD = 115200
 ser = serial.Serial(PORT, BAUD, timeout=2)
 out_directory = "recordings"
-session_name = "run01"
+session_name = "run03"
 Path(out_directory).mkdir(exist_ok=True)
 bin_path = Path(out_directory) / f"{session_name}.bin"
 meta_path = Path(out_directory) / f"{session_name}.meta"
@@ -23,10 +23,10 @@ def read_exactly_number(n):
     return buf
 
 frame_count = 0
-
+MAX_FRAME_COUNT = 1000
 # recording
 with open(bin_path, "ab") as bin_file:
-    while True:
+    while frame_count < MAX_FRAME_COUNT:
         if ser.read(1) != b'D':
             continue
         if ser.read(3) != b"ATA":

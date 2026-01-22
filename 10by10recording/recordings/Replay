@@ -2,10 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-BIN_FILE = "recordings/run01.bin"
+BIN_FILE = "recordings/run03.bin"
 ROWS = 48
 COLS = 48
-FPS = 100
+FPS = 1000
+
+r0, c0 = 0, 24    # top- corner
+H, W = 10, 10  
 
 raw = np.fromfile(BIN_FILE, dtype=np.uint8)
 
@@ -14,6 +17,7 @@ assert raw.size % frame_size == 0, "Corrupt bin file"
 
 num_frames = raw.size // frame_size
 frames = raw.reshape(num_frames, ROWS, COLS)
+cropped = frames[:, r0:r0+10, c0:c0+10]
 
 print(f"Loaded {num_frames} frames")
 
@@ -25,7 +29,7 @@ ax.axis("off")
 dt = 1.0 / FPS
 
 for t in range(num_frames):
-    img.set_data(frames[t])
+    img.set_data(cropped[t])
     ax.set_title(f"Frame {t}")
     plt.draw()
     plt.pause(dt)
