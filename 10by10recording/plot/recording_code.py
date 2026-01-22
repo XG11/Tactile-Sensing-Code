@@ -13,10 +13,18 @@ meta_path = Path(out_directory) / f"{session_name}.meta"
 r0, c0 = 0, 24    # top- corner
 H, W = 10, 10  
 
-def read_exactly(n):
-    
+def read_exactly_number(n):
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = ser.read(n - len(buf))
+        if not chunk:
+            raise RuntimeError("Serial timeout")
+        buf.extend(chunk)
+    return buf
 
-# --- Setup display ---
+frame_count = 0
+
+# recording
 with open(bin_path, "ab") as bin_file:
     while True:
         if ser.read(1) != b'D':
@@ -31,4 +39,22 @@ with open(bin_path, "ab") as bin_file:
         nbytes = FRAMES * ROWS * COLS
 
         print("receiving bytes")
-        payload = read_exactly[]
+        payload = read_exactly_number(nbytes)
+
+        if read_exactly_number(4) != b"DONE":
+            print("footer mismatch")
+            continue
+
+        bin_file.write(payload)
+        bin_file.flush()
+
+        frame_count += FRAMES
+        print(f"stored {frame_count} frames total")
+
+        if not meta_path.exists():
+            with open(meta_path, "w") as f:
+                f.write(f"frames_per_packet={FRAMES}\n")
+                f.write(f"rows={ROWS}\n")
+                f.write(f"cols={COLS}\n")
+                f.write(f"bytes_per_frame = {ROWS*COLS}\n")
+    

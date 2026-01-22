@@ -1,0 +1,34 @@
+import numpy as np
+import csv
+from pathlib import Path
+
+
+BIN_FILE = "recordings/run01.bin"
+CSV_FILE = "recordings/run01.csv"
+
+ROWS = 48
+COLS = 48
+
+raw = np.fromfile(BIN_FILE, dtype=np.uint8)
+
+frame_size = ROWS * COLS
+
+assert raw.size % frame_size == 0, "Binary file size mismatch"
+
+
+num_frames = raw.size // frame_size
+frames = raw.reshape(num_frames, frame_size)
+
+print(f"Loaded {num_frames} frames")
+
+with open(CSV_FILE, "w", newline="") as f:
+    writer = csv.writer(f)
+
+    header = ["frame_id"] + [f"p{i}" for i in range(frame_size)]
+    writer.writerow(header)
+
+    for i in range(num_frames):
+        row = [i] + frames[i].tolist()
+        writer.writerow(row)
+
+print(f"CSV written to {CSV_FILE}")
