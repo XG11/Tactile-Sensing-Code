@@ -32,7 +32,7 @@ print(f"Loaded {num_frames} frames")
 with open(CSV_FILE, "w", newline="") as f:
     writer = csv.writer(f)
 
-    header = ["node_id"] + [f"node{i}" for i in range(num_frames)]
+    header = ["node_id"] + [f"frame{i}" for i in range(num_frames)]
     writer.writerow(header)
 
     for node_id in range(H * W):
