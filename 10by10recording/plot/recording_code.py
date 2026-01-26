@@ -5,7 +5,7 @@ PORT = '/dev/cu.usbmodem160572101'
 BAUD = 115200
 ser = serial.Serial(PORT, BAUD, timeout=2)
 out_directory = "recordings"
-session_name = "run03"
+session_name = "run08_slide_test"
 Path(out_directory).mkdir(exist_ok=True)
 bin_path = Path(out_directory) / f"{session_name}.bin"
 meta_path = Path(out_directory) / f"{session_name}.meta"
@@ -25,16 +25,18 @@ def read_exactly_number(n):
 frame_count = 0
 MAX_FRAME_COUNT = 1000
 # recording
-with open(bin_path, "ab") as bin_file:
+with open(bin_path, "wb") as bin_file:   #"wb" means write binary which overwirte
+    #change to "ab" for appending
     while frame_count < MAX_FRAME_COUNT:
         if ser.read(1) != b'D':
             continue
         if ser.read(3) != b"ATA":
             continue
 
-        FRAMES = struct.unpack('i', ser.read(4))[0]
-        ROWS   = struct.unpack('i', ser.read(4))[0]
-        COLS   = struct.unpack('i', ser.read(4))[0]
+        FRAMES = struct.unpack('<i', ser.read(4))[0]
+        ROWS   = struct.unpack('<i', ser.read(4))[0]
+        COLS   = struct.unpack('<i', ser.read(4))[0]
+        print("Packet Frames", FRAMES) #ok just remember FRAMES var is arbitrary
 
         nbytes = FRAMES * ROWS * COLS
 
