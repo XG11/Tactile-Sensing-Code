@@ -1,9 +1,6 @@
 import serial, struct, numpy as np, time
 from collections import deque
 
-# --------------------
-# SERIAL CONFIG
-# --------------------
 PORT = '/dev/cu.usbmodem160572101'
 BAUD = 115200
 
@@ -11,9 +8,6 @@ ser = serial.Serial(PORT, BAUD, timeout=2)
 
 print("Streaming started...")
 
-# --------------------
-# MODEL LOAD
-# --------------------
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -85,10 +79,10 @@ while True:
         print("Footer mismatch")
         continue
 
-    print("Waiting for raw bytes...")
+    #print("Waiting for raw bytes...")
 
     raw = ser.read(20)
-    print("RAW BYTES:", raw)
+    #print("RAW BYTES:", raw)
 
 
     # --------------------
