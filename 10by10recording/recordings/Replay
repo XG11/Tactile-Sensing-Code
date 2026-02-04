@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-BIN_FILE = "recordings/empty10.bin"
+BIN_FILE = "recordings/poke21.bin"
 ROWS = 48
 COLS = 48
 FPS = 1000

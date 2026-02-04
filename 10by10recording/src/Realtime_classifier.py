@@ -11,7 +11,7 @@ print("Streaming started...")
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "tactile_mlp_model_trial_03.npz")
+MODEL_PATH = os.path.join(BASE_DIR, "tactile_mlp_model_trial_05.npz")
 
 model = np.load(MODEL_PATH)
 
