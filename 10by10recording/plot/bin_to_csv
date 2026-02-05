@@ -3,8 +3,8 @@ import csv
 from pathlib import Path
 
 
-BIN_FILE = "recordings/poke21.bin"
-CSV_FILE = "recordings/poke21.csv"
+BIN_FILE = "recordings/poke_hold21.bin"
+CSV_FILE = "recordings/poke_hold21.csv"
 
 ROWS = 48
 COLS = 48

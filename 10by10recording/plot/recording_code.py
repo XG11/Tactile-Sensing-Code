@@ -5,7 +5,7 @@ PORT = '/dev/cu.usbmodem160572101'
 BAUD = 115200
 ser = serial.Serial(PORT, BAUD, timeout=2)
 out_directory = "recordings"
-session_name = "poke21"
+session_name = "poke_hold21"
 Path(out_directory).mkdir(exist_ok=True)
 bin_path = Path(out_directory) / f"{session_name}.bin"
 meta_path = Path(out_directory) / f"{session_name}.meta"

@@ -1,0 +1,4 @@
+frames_per_packet=20
+rows=48
+cols=48
+bytes_per_frame = 2304
