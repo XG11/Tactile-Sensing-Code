@@ -13,7 +13,7 @@ print("Streaming started...")
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "tactile_cnn_model_trial_01.npz")
+MODEL_PATH = os.path.join(BASE_DIR, "tactile_cnn_model_trial_03.npz")
 
 model = np.load(MODEL_PATH)
 
@@ -22,9 +22,11 @@ conv_bias   = model["conv_bias"]    # (1,)
 fc_weight   = model["fc_weight"]    # (3,16)
 fc_bias     = model["fc_bias"]      # (3,)
 
+
+
 FEATURES = 10 * 10
 
-WINDOW = 500   # sliding window length
+WINDOW = 50   # sliding window length
 frame_buffer = deque(maxlen=WINDOW)
 
 def conv2d_numpy(x, weight, bias):
@@ -77,34 +79,30 @@ def softmax(z):
 
 def predict_window_cnn(x_window):
 
-    probs_all = []
+    logits_all = []
 
     for frame in x_window:
 
-        img = frame.reshape(10,10).astype(np.float32) / 255.0
+        img = frame.reshape(10,10).astype(np.float32)
 
-        # CNN forward
+        # CNN forward (feature + logit extraction)
         z1 = conv2d_numpy(img, conv_weight, conv_bias)
-
-        a1 = relu(z1)
-
+        a1 = np.maximum(0, z1)
         p1 = maxpool2x2(a1)
-
         flat = p1.flatten()
 
-        logits = fc_weight @ flat + fc_bias
+        z2 = fc_weight @ flat + fc_bias   # LOGITS, shape (3,)
+        logits_all.append(z2)
 
-        probs = softmax(logits)
+    logits_all = np.array(logits_all)     # (T,3)
 
-        probs_all.append(probs)
-
-    probs_all = np.array(probs_all)
-
-    mean_probs = np.mean(probs_all, axis=0)
+    mean_logits = np.mean(logits_all, axis=0)
+    mean_probs = softmax(mean_logits)
 
     pred = np.argmax(mean_probs)
 
     return pred, mean_probs
+
 
 
 def read_exactly_number(n):
