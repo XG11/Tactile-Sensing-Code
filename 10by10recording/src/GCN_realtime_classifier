@@ -1,0 +1,151 @@
+import serial, struct, numpy as np, time
+from collections import deque
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import os
+
+# ---------------- SERIAL ----------------
+PORT = '/dev/cu.usbmodem160572101'
+BAUD = 115200
+ser = serial.Serial(PORT, BAUD, timeout=2)
+
+print("Streaming started...")
+
+# ---------------- MODEL ----------------
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "tactile_gcn_01.pth")
+
+T = 50
+NODES = 100
+
+# ----- Build adjacency -----
+H = 10
+W = 10
+A = np.zeros((NODES, NODES))
+
+def idx(r, c):
+    return r * W + c
+
+for r in range(H):
+    for c in range(W):
+        i = idx(r, c)
+        for dr, dc in [(1,0), (-1,0), (0,1), (0,-1)]:
+            rr, cc = r+dr, c+dc
+            if 0 <= rr < H and 0 <= cc < W:
+                j = idx(rr, cc)
+                A[i, j] = 1
+
+A_mod = A + np.eye(NODES)
+D = np.sum(A_mod, axis=1)
+D_inv_sqrt = np.diag(1.0 / np.sqrt(D + 1e-8))
+A_norm = D_inv_sqrt @ A_mod @ D_inv_sqrt
+A_norm = torch.tensor(A_norm, dtype=torch.float32)
+
+# ----- Model Definition -----
+class GCNLayer(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+        self.linear = nn.Linear(in_dim, out_dim)
+
+    def forward(self, X, A):
+        X = torch.matmul(A, X)
+        return F.relu(self.linear(X))
+
+class TactileGCN(nn.Module):
+    def __init__(self, in_dim=50, hidden=64, num_classes=3, layers=3):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        self.layers.append(GCNLayer(in_dim, hidden))
+        for _ in range(layers - 1):
+            self.layers.append(GCNLayer(hidden, hidden))
+        self.classifier = nn.Linear(hidden, num_classes)
+
+    def forward(self, X, A):
+        for layer in self.layers:
+            X = layer(X, A)
+        X = X.mean(dim=1)
+        return self.classifier(X)
+
+# ----- Load model -----
+device = torch.device("cpu")
+model = TactileGCN().to(device)
+model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+model.eval()
+
+# ---------------- REALTIME ----------------
+
+WINDOW = T
+frame_buffer = deque(maxlen=WINDOW)
+
+def read_exactly_number(n):
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = ser.read(n - len(buf))
+        if not chunk:
+            raise RuntimeError("Serial timeout")
+        buf.extend(chunk)
+    return buf
+
+def predict_window(x_window):
+
+    x_tensor = torch.tensor(x_window, dtype=torch.float32)
+    x_tensor = x_tensor.T.unsqueeze(0)  # (1, 100, 50)
+
+    with torch.no_grad():
+        outputs = model(x_tensor, A_norm)
+        probs = F.softmax(outputs, dim=1)
+        pred = outputs.argmax(dim=1).item()
+
+    return pred, probs.cpu().numpy()[0]
+
+# ---------------- LOOP ----------------
+
+while True:
+
+    if ser.read(1) != b'D':
+        continue
+    if ser.read(3) != b"ATA":
+        continue
+
+    FRAMES = struct.unpack('<i', ser.read(4))[0]
+    ROWS   = struct.unpack('<i', ser.read(4))[0]
+    COLS   = struct.unpack('<i', ser.read(4))[0]
+
+    nbytes = FRAMES * ROWS * COLS
+    payload = read_exactly_number(nbytes)
+
+    if read_exactly_number(4) != b"DONE":
+        print("Footer mismatch")
+        continue
+
+    data = np.frombuffer(payload, dtype=np.uint8)
+    frames_full = data.reshape(FRAMES, ROWS, COLS)
+
+    r0, c0 = 0, 24
+    Hc, Wc = 10, 10
+    frames_crop = frames_full[:, r0:r0+Hc, c0:c0+Wc]
+    frames = frames_crop.reshape(FRAMES, Hc*Wc)
+
+    for f in frames:
+
+        if f.shape[0] != NODES:
+            continue
+
+        frame_buffer.append(f.astype(np.float32))
+
+        if len(frame_buffer) == WINDOW:
+
+            x_window = np.array(frame_buffer)
+
+            pred, probs = predict_window(x_window)
+
+            if pred == 0:
+                label = "NO MOTION"
+            elif pred == 1:
+                label = "POKE"
+            else:
+                label = "SLIDE"
+
+            print(label, np.round(probs, 3))
