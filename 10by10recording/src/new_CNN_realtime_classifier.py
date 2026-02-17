@@ -15,7 +15,7 @@ print("Streaming started...")
 # ---------------- MODEL ----------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "tactile_gcn_03(1).pth")
+MODEL_PATH = os.path.join(BASE_DIR, "tactile_cnn_05.pth")
 
 T = 50
 NODES = 100
@@ -23,54 +23,59 @@ NODES = 100
 # ----- Build adjacency-----
 H = 10
 W = 10
-A = np.zeros((NODES, NODES))
-
-def idx(r, c):
-    return r * W + c
-
-for r in range(H):
-    for c in range(W):
-        i = idx(r, c)
-        for dr, dc in [(1,0), (-1,0), (0,1), (0,-1)]:
-            rr, cc = r+dr, c+dc
-            if 0 <= rr < H and 0 <= cc < W:
-                j = idx(rr, cc)
-                A[i, j] = 1
-
-A_mod = A + np.eye(NODES)
-D = np.sum(A_mod, axis=1)
-D_inv_sqrt = np.diag(1.0 / np.sqrt(D + 1e-8))
-A_norm = D_inv_sqrt @ A_mod @ D_inv_sqrt
-A_norm = torch.tensor(A_norm, dtype=torch.float32)
 
 # ----- Model Definition --
-class GCNLayer(nn.Module):
-    def __init__(self, in_dim, out_dim):
-        super().__init__()
-        self.linear = nn.Linear(in_dim, out_dim)
+class TemporalCNN(nn.Module):
+    def __init__(self):
+        super(TemporalCNN, self).__init__()
+        # First convolutional block
+        self.conv1 = nn.Conv2d(in_channels=50, out_channels=32, kernel_size=3, padding=1)
+        self.pool1 = nn.MaxPool2d(2, 2) # Kernel size 2, stride 2
 
-    def forward(self, X, A):
-        X = torch.matmul(A, X)
-        return F.relu(self.linear(X))
+        # Second convolutional block
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.pool2 = nn.MaxPool2d(2, 2)
 
-class TactileGCN(nn.Module):
-    def __init__(self, in_dim=50, hidden=64, num_classes=4, layers=3):
-        super().__init__()
-        self.layers = nn.ModuleList()
-        self.layers.append(GCNLayer(in_dim, hidden))
-        for _ in range(layers - 1):
-            self.layers.append(GCNLayer(hidden, hidden))
-        self.classifier = nn.Linear(hidden, num_classes)
+        # Third convolutional block
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
+        self.pool3 = nn.MaxPool2d(2, 2)
 
-    def forward(self, X, A):
-        for layer in self.layers:
-            X = layer(X, A)
-        X = X.mean(dim=1)
-        return self.classifier(X)
+        # Fully connected layer
+        # Initial 10x10 -> pool1 (5x5) -> pool2 (2x2) -> pool3 (1x1)
+        # So, the output will be 64 * 1 * 1 = 64 features.
+        self.fc = nn.Linear(64, 3) # 3 classes: no motion, poke, slide
+
+    def forward(self, x):
+        B, T_seq, Nodes = x.shape # (batch_size, T, 100)
+        H, W = 10, 10 # Assuming nodes = H * W, H and W are global variables
+
+        # Reshape for CNN input: (B*T_seq, 1, H, W)
+        x = x.view(B , T_seq, H, W)
+
+        # First convolutional block
+        x = self.pool1(F.relu(self.conv1(x))) # (B*T_seq, 16, 5, 5)
+
+        # Second convolutional block
+        x = self.pool2(F.relu(self.conv2(x))) # (B*T_seq, 32, 2, 2)
+
+        # Third convolutional block
+        x = self.pool3(F.relu(self.conv3(x))) # (B*T_seq, 64, 1, 1)
+
+        # Flatten for the fully connected layer
+        x = x.view(B, -1) # (B*T_seq, 64)
+
+        # Fully connected layer
+        logits = self.fc(x) # (B*T_seq, 3)
+
+        # Reshape back to (B, T_seq, 3) and average over the sequence length
+        #logits = logits.view(B, T_seq, 3)
+        #logits = logits.mean(dim=1) # (B, 3)
+
+        return logits
 
 # ----- Load model -----
 device = torch.device("cpu")
-model = TactileGCN().to(device)
+model = TemporalCNN().to(device)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
 model.eval()
 
@@ -91,10 +96,10 @@ def read_exactly_number(n):
 def predict_window(x_window):
 
     x_tensor = torch.tensor(x_window, dtype=torch.float32)
-    x_tensor = x_tensor.T.unsqueeze(0)  # (1, 100, 50)
+    x_tensor = x_tensor.unsqueeze(0)  # (1, 100, 50)
 
     with torch.no_grad():
-        outputs = model(x_tensor, A_norm)
+        outputs = model(x_tensor)
         probs = F.softmax(outputs, dim=1)
         pred = outputs.argmax(dim=1).item()
 
@@ -145,9 +150,7 @@ while True:
                 label = "NO MOTION"
             elif pred == 1:
                 label = "POKE"
-            elif pred == 2:
-                label = "....slow slide....."
             else:
-                label = "FAST SLIDE"
+                label = "SLIDE"
 
             print(label, np.round(probs, 3))
