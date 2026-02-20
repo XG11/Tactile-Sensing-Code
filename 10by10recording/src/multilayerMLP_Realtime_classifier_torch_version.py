@@ -15,62 +15,44 @@ print("Streaming started...")
 # ---------------- MODEL ----------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "tactile_gcn_04_no_adam.pth")
+MODEL_PATH = os.path.join(BASE_DIR, "3layerMLPparameter/3layermlp6_1000ep_torch_with_adam.pth")
 
 T = 50
 NODES = 100
 
-# ----- Build adjacency-----
-H = 10
-W = 10
-A = np.zeros((NODES, NODES))
-
-def idx(r, c):
-    return r * W + c
-
-for r in range(H):
-    for c in range(W):
-        i = idx(r, c)
-        for dr, dc in [(1,0), (-1,0), (0,1), (0,-1)]:
-            rr, cc = r+dr, c+dc
-            if 0 <= rr < H and 0 <= cc < W:
-                j = idx(rr, cc)
-                A[i, j] = 1
-
-A_mod = A + np.eye(NODES)
-D = np.sum(A_mod, axis=1)
-D_inv_sqrt = np.diag(1.0 / np.sqrt(D + 1e-8))
-A_norm = D_inv_sqrt @ A_mod @ D_inv_sqrt
-A_norm = torch.tensor(A_norm, dtype=torch.float32)
-
 # ----- Model Definition --
-class GCNLayer(nn.Module):
-    def __init__(self, in_dim, out_dim):
+class TactileMLP(nn.Module):
+    def __init__(self):
         super().__init__()
-        self.linear = nn.Linear(in_dim, out_dim)
 
-    def forward(self, X, A):
-        X = torch.matmul(A, X)
-        return F.relu(self.linear(X))
+        self.fc1 = nn.Linear(100, 50)
+        self.fc2 = nn.Linear(50, 64)
+        self.fc3 = nn.Linear(64, 64)
+        self.fc4 = nn.Linear(64, 4)
 
-class TactileGCN(nn.Module):
-    def __init__(self, in_dim=50, hidden=64, num_classes=4, layers=3):
-        super().__init__()
-        self.layers = nn.ModuleList()
-        self.layers.append(GCNLayer(in_dim, hidden))
-        for _ in range(layers - 1):
-            self.layers.append(GCNLayer(hidden, hidden))
-        self.classifier = nn.Linear(hidden, num_classes)
+    def forward(self, x):
+        # x: (B, T, 100)
 
-    def forward(self, X, A):
-        for layer in self.layers:
-            X = layer(X, A)
-        X = X.mean(dim=1)
-        return self.classifier(X)
+        B, T, D = x.shape
+
+        x = x.view(B * T, D)           # (B*T, 100)
+
+        z1 = torch.relu(self.fc1(x))   # (B*T, 50)
+
+        z1 = z1.view(B, T, 50)         # (B, T, 50)
+
+        pooled = z1.mean(dim=1)        # (B, 50)
+
+        z2 = torch.relu(self.fc2(pooled))  # (B, 64)
+        z3 = torch.relu(self.fc3(z2))      # (B, 64)
+
+        out = self.fc4(z3)                 # (B, 4)
+
+        return out
 
 # ----- Load model -----
 device = torch.device("cpu")
-model = TactileGCN().to(device)
+model = TactileMLP().to(device)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
 model.eval()
 
@@ -91,10 +73,10 @@ def read_exactly_number(n):
 def predict_window(x_window):
 
     x_tensor = torch.tensor(x_window, dtype=torch.float32)
-    x_tensor = x_tensor.T.unsqueeze(0)  # (1, 100, 50)
+    x_tensor = x_tensor.unsqueeze(0)  # (1, 100, 50)
 
     with torch.no_grad():
-        outputs = model(x_tensor, A_norm)
+        outputs = model(x_tensor)
         probs = F.softmax(outputs, dim=1)
         pred = outputs.argmax(dim=1).item()
 

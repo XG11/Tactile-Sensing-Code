@@ -11,7 +11,7 @@ print("Streaming started...")
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "tactile_mlp_model_trial_random_test2.npz")
+MODEL_PATH = os.path.join(BASE_DIR, "onelayerMLPparameter/1layermlp_03.npz")
 
 model = np.load(MODEL_PATH)
 
@@ -22,9 +22,10 @@ b1   = model["b1"]
 W2   = model["W2"]
 b2   = model["b2"]
 
+
 FEATURES = mean.shape[0]
 
-WINDOW = 100   # sliding window length
+WINDOW = 50   # sliding window length
 frame_buffer = deque(maxlen=WINDOW)
 
 def read_exactly_number(n):
@@ -44,9 +45,9 @@ def predict_window(x_window):
     Z1 = X_test @ W1.T + b1
     A1 = np.maximum(0, Z1)
 
-    pooled = np.mean(A1, axis=0)
+    pooled_A1 = np.mean(A1, axis=0)
 
-    Z2 = W2 @ pooled + b2
+    Z2 = W2 @ pooled_A1 + b2
 
     expZ = np.exp(Z2 - np.max(Z2))
     probs = expZ / np.sum(expZ)
@@ -117,7 +118,9 @@ while True:
                 label = "NO MOTION"
             elif pred == 1:
                 label = "POKE"
+            elif pred == 2:
+                label = "....slow slide....."
             else:
-                label = "SLIDE"
+                label = "FAST SLIDE"
 
             print(label, np.round(probs, 3))

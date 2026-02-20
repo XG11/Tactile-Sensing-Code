@@ -1,0 +1,138 @@
+import serial, struct, numpy as np, time
+from collections import deque
+
+PORT = '/dev/cu.usbmodem160572101'
+BAUD = 115200
+
+ser = serial.Serial(PORT, BAUD, timeout=2)
+
+print("Streaming started...")
+
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "3layerMLPparameter/3layermlp5_100ep_torch_with_adam.npz")
+
+model = np.load(MODEL_PATH)
+
+mean = model["mean"]
+std  = model["std"]
+W1   = model["W1"]
+b1   = model["b1"]
+W2   = model["W2"]
+b2   = model["b2"]
+W3   = model["W3"]
+b3   = model["b3"]
+W4   = model["W4"]
+b4   = model["b4"]
+
+FEATURES = mean.shape[0]
+
+WINDOW = 50   # sliding window length
+frame_buffer = deque(maxlen=WINDOW)
+
+def read_exactly_number(n):
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = ser.read(n - len(buf))
+        if not chunk:
+            raise RuntimeError("Serial timeout")
+        buf.extend(chunk)
+    return buf
+
+
+def predict_window(x_window):
+
+    X_test = (x_window - mean) / std
+
+    Z1 = X_test @ W1.T + b1
+    A1 = np.maximum(0, Z1)
+
+    pooled_A1 = np.mean(A1, axis=0)
+
+    Z2 = W2 @ pooled_A1 + b2
+    A2 = np.maximum(0, Z2)
+    pooled_A2 = A2
+
+    Z3 = W3 @ pooled_A2 + b3
+    A3 = np.maximum(0, Z3)
+    pooled_A3 = A3
+
+    Z4 = W4 @ pooled_A3  + b4
+
+
+    expZ = np.exp(Z4 - np.max(Z4))
+    probs = expZ / np.sum(expZ)
+
+    pred = np.argmax(probs)
+
+    return pred, probs
+
+
+# --------------------
+# REALTIME LOOP
+# --------------------
+while True:
+
+    # Wait for header
+    if ser.read(1) != b'D':
+        continue
+    if ser.read(3) != b"ATA":
+        continue
+
+    FRAMES = struct.unpack('<i', ser.read(4))[0]
+    ROWS   = struct.unpack('<i', ser.read(4))[0]
+    COLS   = struct.unpack('<i', ser.read(4))[0]
+
+    nbytes = FRAMES * ROWS * COLS
+
+    payload = read_exactly_number(nbytes)
+
+    if read_exactly_number(4) != b"DONE":
+        print("Footer mismatch")
+        continue
+
+    #print("Waiting for raw bytes...")
+
+    raw = ser.read(20)
+    #print("RAW BYTES:", raw)
+
+
+    # --------------------
+    # Process frames
+    # --------------------
+    data = np.frombuffer(payload, dtype=np.uint8)
+
+    frames_full = data.reshape(FRAMES, ROWS, COLS)
+
+# SAME ROI AS TRAINING
+    r0, c0 = 0, 24
+    H, W   = 10, 10
+
+    frames_crop = frames_full[:, r0:r0+H, c0:c0+W]
+
+    frames = frames_crop.reshape(FRAMES, H*W)
+
+    for f in frames:
+
+        if f.shape[0] != FEATURES:
+            continue
+
+        frame_buffer.append(f.astype(np.float32))
+
+        if len(frame_buffer) == WINDOW:
+
+            x_window = np.array(frame_buffer)
+
+            pred, probs = predict_window(x_window)
+
+            if pred == 0:
+                label = "NO MOTION"
+            elif pred == 1:
+                label = "POKE"
+            elif pred == 2:
+                label = "slow-slide"
+            else:
+                label = "FAST SLIDE"
+
+            print(label, np.round(probs, 3))
