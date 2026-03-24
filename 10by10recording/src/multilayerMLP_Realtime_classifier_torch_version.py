@@ -15,7 +15,7 @@ print("Streaming started...")
 # ---------------- MODEL ----------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "3layerMLPparameter/3layermlp6_1000ep_torch_with_adam.pth")
+MODEL_PATH = os.path.join(BASE_DIR, "3layerMLPparameter/3layermlp5_100ep_torch_with_adam.pth")
 
 T = 50
 NODES = 100

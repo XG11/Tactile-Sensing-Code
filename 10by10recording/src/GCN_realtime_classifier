@@ -5,22 +5,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 
-# ---------------- SERIAL ----------------
 PORT = '/dev/cu.usbmodem160572101'
 BAUD = 115200
 ser = serial.Serial(PORT, BAUD, timeout=2)
 
 print("Streaming started...")
 
-# ---------------- MODEL ----------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "tactile_gcn_04_no_adam.pth")
+MODEL_PATH = os.path.join(BASE_DIR, "tactile_gcn_03(1).pth")
 
 T = 50
 NODES = 100
 
-# ----- Build adjacency-----
+# ----- Build adjacency
 H = 10
 W = 10
 A = np.zeros((NODES, NODES))
