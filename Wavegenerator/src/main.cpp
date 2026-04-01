@@ -1,7 +1,7 @@
 #include <Arduino.h>
 
 // put function declarations here:
-const int outputPin = 9; // Use any suitable digital pin
+const int outputPin = 11; // Use any suitable digital pin
 void setup() {
   // put your setup code here, to run once:
   pinMode(outputPin, OUTPUT);
