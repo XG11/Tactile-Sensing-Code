@@ -1,0 +1,31 @@
+{
+	"folders": [
+		{
+			"path": "../../10by10recording"
+		},
+		{
+			"name": "10by10illustration",
+			"path": "../../10by10illustration"
+		},
+		{
+			"name": "ForcesensorDYLY106",
+			"path": "../../ForcesensorDYLY106"
+		},
+		{
+			"name": "Wavegenerator",
+			"path": "../../Wavegenerator"
+		},
+		{
+			"name": "valostat3by3",
+			"path": ".."
+		},
+		{
+			"name": "valostat_raw_reading",
+			"path": "../../valostat_raw_reading"
+		},
+		{
+			"path": "../../../../py3DCal-main"
+		}
+	],
+	"settings": {}
+}

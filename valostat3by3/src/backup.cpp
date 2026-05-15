@@ -1,3 +1,4 @@
+/*
 #include <Arduino.h>
 
 int analog_pin1 = 22;
@@ -13,9 +14,9 @@ int enable4 = 10;
 int enable5 = 11;
 
 int baseline[5][5];
-int threshold = 80; 
-// int threshold = 300;
-// int threshold = 10;
+int threshold = 30; //for valostat with silver wire and non-conductive adheasive
+//int threshold = 300; //for costumozied material carbon fiber
+//int threshold = 10; // for the original valostat
 
 void readMatrix(int matrix[5][5]) {
   digitalWriteFast(enable1, HIGH);
@@ -65,32 +66,10 @@ void readMatrix(int matrix[5][5]) {
 }
 
 void printRawMatrix(int matrix[5][5]) {
-  const float amp_coefficient = 10.0;
-  const float R_ref = 330.0;
-
-  Serial.println("Raw ADC:");
+  Serial.println("Raw:");
   for (int i = 0; i < 5; i++) {
     for (int j = 0; j < 5; j++) {
       Serial.print(matrix[i][j]);
-      Serial.print("\t");
-    }
-    Serial.println();
-  }
-
-  Serial.println("Estimated Resistance:");
-  for (int i = 0; i < 5; i++) {
-    for (int j = 0; j < 5; j++) {
-      int raw_out = matrix[i][j];
-
-      if (raw_out <= 0) {
-        Serial.print("INF\t");
-        continue;
-      }
-
-      float v_out = raw_out * 3.3 / 1023.0;
-      float R_val = (3.3 * amp_coefficient * R_ref / v_out) - R_ref;
-
-      Serial.print(R_val, 2);
       Serial.print("\t");
     }
     Serial.println();
@@ -149,3 +128,5 @@ void loop() {
 
   delay(100);
 }
+
+*/
