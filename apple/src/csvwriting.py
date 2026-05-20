@@ -1,63 +1,81 @@
 import serial
 import csv
 import time
-from datetime import datetime
+import sounddevice as sd
+import soundfile as sf
 
-# Change this to your Teensy serial port
-PORT = "/dev/tty.usbmodem135529601" 
+SERIAL_PORT = "/dev/tty.usbmodem135529601" 
+BAUD = 115200
+DURATION = 60
 
-BAUD = 921600
+AUDIO_DEVICE_NAME = "Teensy"
+AUDIO_SAMPLE_RATE = 44100
+AUDIO_CHANNELS = 1
 
-RECORD_SECONDS = 60
+sensor_file = "sensors.csv"
+audio_file = "audio.wav"
 
-# ================= SERIAL =================
-ser = serial.Serial(PORT, BAUD, timeout=1)
+# Find Teensy audio device
+devices = sd.query_devices()
+audio_device = None
 
+for i, d in enumerate(devices):
+    if AUDIO_DEVICE_NAME.lower() in d["name"].lower() and d["max_input_channels"] > 0:
+        audio_device = i
+        print("Using audio device:", i, d["name"])
+        break
+
+if audio_device is None:
+    raise RuntimeError("Could not find Teensy audio input device")
+
+ser = serial.Serial(SERIAL_PORT, BAUD, timeout=1)
 time.sleep(2)
 
-# ================= FILE NAME =================
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-filename = f"session_{timestamp}.csv"
+audio_frames = []
 
-print(f"Recording to {filename}")
+def audio_callback(indata, frames, time_info, status):
+    if status:
+        print(status)
+    audio_frames.append(indata.copy())
 
-# ================= RECORD =================
-start_time = time.time()
+print("Recording...")
 
-with open(filename, "w", newline="") as f:
-    writer = csv.writer(f)
+with sf.SoundFile(audio_file, mode="w",
+                  samplerate=AUDIO_SAMPLE_RATE,
+                  channels=AUDIO_CHANNELS,
+                  subtype="PCM_16") as wav_file:
 
-    # CSV header
-    writer.writerow([
-        "time_ms",
-        "ax",
-        "ay",
-        "az",
-        "gx",
-        "gy",
-        "gz",
-        "load_raw"
-    ])
+    def audio_callback(indata, frames, time_info, status):
+        if status:
+            print(status)
+        wav_file.write(indata)
 
-    while time.time() - start_time < RECORD_SECONDS:
+    with sd.InputStream(device=audio_device,
+                        samplerate=AUDIO_SAMPLE_RATE,
+                        channels=AUDIO_CHANNELS,
+                        dtype="int16",
+                        callback=audio_callback):
 
-        line = ser.readline().decode(
-            "utf-8",
-            errors="ignore"
-        ).strip()
+        with open(sensor_file, "w", newline="") as f:
+            writer = csv.writer(f)
 
-        if not line:
-            continue
+            start = time.time()
 
-        print(line)
+            while time.time() - start < DURATION:
+                line = ser.readline().decode("utf-8", errors="ignore").strip()
 
-        parts = line.split(",")
+                if not line:
+                    continue
 
-        # only save valid rows
-        if len(parts) == 8:
-            writer.writerow(parts)
+                print(line)
 
-# ================= CLEANUP =================
+                parts = line.split(",")
+
+                if len(parts) == 8:
+                    writer.writerow(parts)
+
 ser.close()
 
-print("Recording complete.")
+print("Saved:")
+print(sensor_file)
+print(audio_file)
