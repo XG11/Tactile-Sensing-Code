@@ -18,16 +18,28 @@ SESSION_NAME = datetime.now().strftime("session_%Y%m%d_%H%M%S")
 os.makedirs(SESSION_NAME, exist_ok=True)
 
 sensor_file = os.path.join(SESSION_NAME, "sensors.csv")
-gelsight_folder = os.path.join(SESSION_NAME, "gelsight")
-gelsight_index_file = os.path.join(SESSION_NAME, "gelsight_index.csv")
-
-os.makedirs(gelsight_folder, exist_ok=True)
+video_file = os.path.join(SESSION_NAME, "gelsight.mp4")
 
 
 # ---------- GelSight ----------
 gsmini = p3d.GelsightMini()
 gsmini.connect()
 print("GelSight connected")
+
+# Capture one frame to get size
+first_frame = gsmini.capture_image()
+height, width = first_frame.shape[:2]
+
+fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+video_writer = cv2.VideoWriter(
+    video_file,
+    fourcc,
+    GELSIGHT_FPS,
+    (width, height)
+)
+
+if not video_writer.isOpened():
+    raise RuntimeError("Could not open MP4 video writer")
 
 
 # ---------- Serial ----------
@@ -44,15 +56,8 @@ sensor_header = [
     "load_raw",
 ]
 
-gelsight_header = [
-    "pc_time_s",
-    "frame_id",
-    "filename",
-]
-
-
 sensor_count = 0
-gelsight_count = 0
+video_count = 0
 bad_count = 0
 
 last_status = time.time()
@@ -62,16 +67,16 @@ gelsight_interval = 1.0 / GELSIGHT_FPS
 print("Recording to folder:", SESSION_NAME)
 
 
-with open(sensor_file, "w", newline="") as sensor_f, \
-     open(gelsight_index_file, "w", newline="") as gel_f:
-
+with open(sensor_file, "w", newline="") as sensor_f:
     sensor_writer = csv.writer(sensor_f)
-    gel_writer = csv.writer(gel_f)
-
     sensor_writer.writerow(sensor_header)
-    gel_writer.writerow(gelsight_header)
 
     start = time.time()
+
+    # Write first frame
+    video_writer.write(first_frame)
+    video_count += 1
+    last_gelsight_capture = start
 
     while time.time() - start < DURATION:
         now = time.time()
@@ -89,18 +94,17 @@ with open(sensor_file, "w", newline="") as sensor_f, \
             else:
                 bad_count += 1
 
-        # ---------- Capture GelSight ----------
+        # ---------- Capture GelSight frame ----------
         if now - last_gelsight_capture >= gelsight_interval:
-            img = gsmini.capture_image()
+            frame = gsmini.capture_image()
 
-            filename = f"gelsight_{gelsight_count:06d}.png"
-            path = os.path.join(gelsight_folder, filename)
+            # Make sure frame size matches video size
+            if frame.shape[1] != width or frame.shape[0] != height:
+                frame = cv2.resize(frame, (width, height))
 
-            cv2.imwrite(path, img)
-            gel_writer.writerow([pc_time_s, gelsight_count, filename])
-
-            gelsight_count += 1
-            last_gelsight_capture = now
+            video_writer.write(frame)
+            video_count += 1
+            last_gelsight_capture += gelsight_interval
 
         # ---------- Status ----------
         if now - last_status >= 1.0:
@@ -108,18 +112,17 @@ with open(sensor_file, "w", newline="") as sensor_f, \
             print(
                 f"elapsed={elapsed:.1f}s, "
                 f"sensor_samples={sensor_count}, "
-                f"gelsight_frames={gelsight_count}, "
+                f"video_frames={video_count}, "
                 f"bad_lines={bad_count}"
             )
             last_status = now
 
 
 ser.close()
+video_writer.release()
 
 print("Saved:")
 print(sensor_file)
-print(gelsight_index_file)
-print(gelsight_folder)
+print(video_file)
 print("Sensor samples:", sensor_count)
-print("GelSight frames:", gelsight_count)
-print("Bad lines:", bad_count)
+print("Video frames:", video_count)
