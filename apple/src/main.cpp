@@ -6,14 +6,16 @@
 #include <Adafruit_BNO08x.h>
 
 // ================= LOAD CELL ADS1220 =================
-#define ADS1220_CS_PIN    10
-#define ADS1220_DRDY_PIN  9
+#define ADS1220_CS_PIN    6
+#define ADS1220_DRDY_PIN  5
 
 Protocentral_ADS1220 pc_ads1220;
 int32_t loadCellRaw = 0;
 
-// ================= BNO08x =================
-#define BNO08X_RESET -1
+// ================= BNO08x SPI =================
+#define BNO08X_CS     10
+#define BNO08X_INT    9
+#define BNO08X_RESET  4
 
 Adafruit_BNO08x bno08x(BNO08X_RESET);
 sh2_SensorValue_t sensorValue;
@@ -22,42 +24,48 @@ float ax = 0, ay = 0, az = 0;
 float gx = 0, gy = 0, gz = 0;
 
 // ================= I2S MIC -> USB AUDIO =================
-// Teensy 4.0 I2S mic pins:
 // BCLK  = pin 21
 // LRCLK = pin 20
-// DIN   = pin 8
+// DIN   = pin 7
 // 3V3   = 3.3V
 // GND   = GND
 
 AudioInputI2S        i2sMic;
 AudioOutputUSB       usbAudio;
 
-// Send mic to both left and right USB audio channels
 AudioConnection patchCord1(i2sMic, 0, usbAudio, 0);
 AudioConnection patchCord2(i2sMic, 0, usbAudio, 1);
 
 // ================= SAMPLE RATE =================
-const unsigned long SAMPLE_INTERVAL_MS = 50; // 20 Hz sensor CSV
+const unsigned long SAMPLE_INTERVAL_US = 5000; //
+// 5000 -> 200Hz
 unsigned long lastSampleTime = 0;
 
 void setupBNOReports() {
-  long reportIntervalUs = 50000; // 20 Hz
+  long reportIntervalUs = 5000; // 
 
-  if (!bno08x.enableReport(SH2_ACCELEROMETER, reportIntervalUs)) {
+  if (!bno08x.enableReport(SH2_ACCELEROMETER, 5000)) {
     Serial.println("Could not enable accelerometer");
   }
 
-  if (!bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, reportIntervalUs)) {
+  delay(20);
+
+  if (!bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, 5000)) {
     Serial.println("Could not enable gyroscope");
   }
+
+  delay(20);
 }
 
 void updateIMU() {
   if (bno08x.wasReset()) {
+    delay(50);
     setupBNOReports();
   }
 
-  while (bno08x.getSensorEvent(&sensorValue)) {
+  int count = 0;
+
+  if (bno08x.getSensorEvent(&sensorValue)) {
     switch (sensorValue.sensorId) {
       case SH2_ACCELEROMETER:
         ax = sensorValue.un.accelerometer.x;
@@ -73,35 +81,38 @@ void updateIMU() {
     }
   }
 }
-
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(2000000);
   while (!Serial) delay(10);
 
-  // Audio memory for I2S mic -> USB audio
   AudioMemory(16);
 
-  // ---------- BNO08x I2C ----------
-  Wire.begin();
-  delay(100);
+  // ---------- SPI ----------
+  pinMode(BNO08X_CS, OUTPUT);
+  digitalWrite(BNO08X_CS, HIGH);
 
-  if (!bno08x.begin_I2C(0x4A, &Wire)) {
-    if (!bno08x.begin_I2C(0x4B, &Wire)) {
-      Serial.println("Failed to find BNO08x");
-      while (1) delay(10);
-    }
+  pinMode(ADS1220_CS_PIN, OUTPUT);
+  digitalWrite(ADS1220_CS_PIN, HIGH);
+
+  SPI.begin();
+  delay(200);
+
+  // ---------- BNO08x SPI ----------
+  delay(200);
+  // According to datasheet, acc sample report up to 400hz and gyro up to 500hz
+  if (!bno08x.begin_SPI(BNO08X_CS, BNO08X_INT)) {
+    Serial.println("Failed to find BNO08x over SPI");
+    while (1) delay(10);
   }
 
+  delay(100);
   setupBNOReports();
 
   // ---------- ADS1220 SPI ----------
-  SPI.begin();
-
   pc_ads1220.begin(ADS1220_CS_PIN, ADS1220_DRDY_PIN);
 
   pc_ads1220.set_pga_gain(PGA_GAIN_128);
-  pc_ads1220.set_data_rate(DR_20SPS);
-  pc_ads1220.set_FIR_Filter(FIR_5060);
+  pc_ads1220.set_data_rate(DR_1000SPS);   // closest above 400 Hz
   pc_ads1220.set_conv_mode_continuous();
 
   Serial.println("time_us,ax,ay,az,gx,gy,gz,load_raw");
@@ -114,23 +125,28 @@ void loop() {
     loadCellRaw = pc_ads1220.Read_WaitForData();
   }
 
-  unsigned long now = millis();
+  unsigned long now = micros();
 
-  if (now - lastSampleTime >= SAMPLE_INTERVAL_MS) {
-    lastSampleTime = now;
+  if (now - lastSampleTime >= SAMPLE_INTERVAL_US) {
+    lastSampleTime += SAMPLE_INTERVAL_US;
 
-    unsigned long t = micros();
+    static unsigned long prevPrintTime = 0;
 
-    Serial.print(t);
+    unsigned long dt = now - prevPrintTime;
+    prevPrintTime = now;
+
+    Serial.print(now);
     Serial.print(",");
+    //Serial.print(dt);
+    //Serial.print(",");
 
-    Serial.print(ax, 6); Serial.print(",");
-    Serial.print(ay, 6); Serial.print(",");
-    Serial.print(az, 6); Serial.print(",");
+    Serial.print(ax, 3); Serial.print(",");
+    Serial.print(ay, 3); Serial.print(",");
+    Serial.print(az, 3); Serial.print(",");
 
-    Serial.print(gx, 6); Serial.print(",");
-    Serial.print(gy, 6); Serial.print(",");
-    Serial.print(gz, 6); Serial.print(",");
+    Serial.print(gx, 3); Serial.print(",");
+    Serial.print(gy, 3); Serial.print(",");
+    Serial.print(gz, 3); Serial.print(",");
 
     Serial.println(loadCellRaw);
   }

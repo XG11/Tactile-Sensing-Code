@@ -5,8 +5,8 @@ import sounddevice as sd
 import soundfile as sf
 
 SERIAL_PORT = "/dev/tty.usbmodem135529601" 
-BAUD = 115200
-DURATION = 60
+BAUD = 2000000
+DURATION = 10
 
 AUDIO_DEVICE_NAME = "Teensy"
 AUDIO_SAMPLE_RATE = 44100
