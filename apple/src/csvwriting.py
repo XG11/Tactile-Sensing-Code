@@ -1,81 +1,125 @@
 import serial
 import csv
 import time
-import sounddevice as sd
-import soundfile as sf
+import os
+from datetime import datetime
 
-SERIAL_PORT = "/dev/tty.usbmodem135529601" 
+import cv2
+import py3DCal as p3d
+
+
+SERIAL_PORT = "/dev/tty.usbmodem135529601"
 BAUD = 2000000
 DURATION = 10
 
-AUDIO_DEVICE_NAME = "Teensy"
-AUDIO_SAMPLE_RATE = 44100
-AUDIO_CHANNELS = 1
+GELSIGHT_FPS = 30
 
-sensor_file = "sensors.csv"
-audio_file = "audio.wav"
+SESSION_NAME = datetime.now().strftime("session_%Y%m%d_%H%M%S")
+os.makedirs(SESSION_NAME, exist_ok=True)
 
-# Find Teensy audio device
-devices = sd.query_devices()
-audio_device = None
+sensor_file = os.path.join(SESSION_NAME, "sensors.csv")
+gelsight_folder = os.path.join(SESSION_NAME, "gelsight")
+gelsight_index_file = os.path.join(SESSION_NAME, "gelsight_index.csv")
 
-for i, d in enumerate(devices):
-    if AUDIO_DEVICE_NAME.lower() in d["name"].lower() and d["max_input_channels"] > 0:
-        audio_device = i
-        print("Using audio device:", i, d["name"])
-        break
+os.makedirs(gelsight_folder, exist_ok=True)
 
-if audio_device is None:
-    raise RuntimeError("Could not find Teensy audio input device")
 
-ser = serial.Serial(SERIAL_PORT, BAUD, timeout=1)
+# ---------- GelSight ----------
+gsmini = p3d.GelsightMini()
+gsmini.connect()
+print("GelSight connected")
+
+
+# ---------- Serial ----------
+ser = serial.Serial(SERIAL_PORT, BAUD, timeout=0.01)
 time.sleep(2)
+ser.reset_input_buffer()
 
-audio_frames = []
 
-def audio_callback(indata, frames, time_info, status):
-    if status:
-        print(status)
-    audio_frames.append(indata.copy())
+sensor_header = [
+    "pc_time_s",
+    "teensy_time_us",
+    "ax", "ay", "az",
+    "gx", "gy", "gz",
+    "load_raw",
+]
 
-print("Recording...")
+gelsight_header = [
+    "pc_time_s",
+    "frame_id",
+    "filename",
+]
 
-with sf.SoundFile(audio_file, mode="w",
-                  samplerate=AUDIO_SAMPLE_RATE,
-                  channels=AUDIO_CHANNELS,
-                  subtype="PCM_16") as wav_file:
 
-    def audio_callback(indata, frames, time_info, status):
-        if status:
-            print(status)
-        wav_file.write(indata)
+sensor_count = 0
+gelsight_count = 0
+bad_count = 0
 
-    with sd.InputStream(device=audio_device,
-                        samplerate=AUDIO_SAMPLE_RATE,
-                        channels=AUDIO_CHANNELS,
-                        dtype="int16",
-                        callback=audio_callback):
+last_status = time.time()
+last_gelsight_capture = 0
+gelsight_interval = 1.0 / GELSIGHT_FPS
 
-        with open(sensor_file, "w", newline="") as f:
-            writer = csv.writer(f)
+print("Recording to folder:", SESSION_NAME)
 
-            start = time.time()
 
-            while time.time() - start < DURATION:
-                line = ser.readline().decode("utf-8", errors="ignore").strip()
+with open(sensor_file, "w", newline="") as sensor_f, \
+     open(gelsight_index_file, "w", newline="") as gel_f:
 
-                if not line:
-                    continue
+    sensor_writer = csv.writer(sensor_f)
+    gel_writer = csv.writer(gel_f)
 
-                print(line)
+    sensor_writer.writerow(sensor_header)
+    gel_writer.writerow(gelsight_header)
 
-                parts = line.split(",")
+    start = time.time()
 
-                if len(parts) == 8:
-                    writer.writerow(parts)
+    while time.time() - start < DURATION:
+        now = time.time()
+        pc_time_s = now - start
+
+        # ---------- Read Teensy serial ----------
+        line = ser.readline().decode("utf-8", errors="ignore").strip()
+
+        if line and not line.startswith("time_us") and not line.startswith("#"):
+            parts = line.split(",")
+
+            if len(parts) == 8:
+                sensor_writer.writerow([pc_time_s] + parts)
+                sensor_count += 1
+            else:
+                bad_count += 1
+
+        # ---------- Capture GelSight ----------
+        if now - last_gelsight_capture >= gelsight_interval:
+            img = gsmini.capture_image()
+
+            filename = f"gelsight_{gelsight_count:06d}.png"
+            path = os.path.join(gelsight_folder, filename)
+
+            cv2.imwrite(path, img)
+            gel_writer.writerow([pc_time_s, gelsight_count, filename])
+
+            gelsight_count += 1
+            last_gelsight_capture = now
+
+        # ---------- Status ----------
+        if now - last_status >= 1.0:
+            elapsed = now - start
+            print(
+                f"elapsed={elapsed:.1f}s, "
+                f"sensor_samples={sensor_count}, "
+                f"gelsight_frames={gelsight_count}, "
+                f"bad_lines={bad_count}"
+            )
+            last_status = now
+
 
 ser.close()
 
 print("Saved:")
 print(sensor_file)
-print(audio_file)
+print(gelsight_index_file)
+print(gelsight_folder)
+print("Sensor samples:", sensor_count)
+print("GelSight frames:", gelsight_count)
+print("Bad lines:", bad_count)
