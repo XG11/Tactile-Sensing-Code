@@ -13,7 +13,7 @@ import py3DCal as p3d
 
 SERIAL_PORT = "/dev/tty.usbmodem135529601"
 BAUD = 2000000
-DURATION = 10
+DURATION = 30
 
 AUDIO_DEVICE_NAME = "Teensy"
 AUDIO_SAMPLE_RATE = 44100
@@ -27,14 +27,22 @@ os.makedirs(SESSION_NAME, exist_ok=True)
 
 sensor_file = os.path.join(SESSION_NAME, "sensors.csv")
 video_file = os.path.join(SESSION_NAME, "gelsight.mp4")
+video_ts_file = os.path.join(SESSION_NAME, "gelsight_timestamps.csv")
 audio_file = os.path.join(SESSION_NAME, "audio.wav")
-
+audio_ts_file = os.path.join(SESSION_NAME, "audio_timestamps.csv")
 
 stop_event = threading.Event()
-start_time = None
+
+start_time_ns = None
 
 sensor_count = 0
 bad_count = 0
+video_count = 0
+audio_sample_index = 0
+
+
+def now_s():
+    return (time.perf_counter_ns() - start_time_ns) / 1e9
 
 
 def serial_thread_func():
@@ -66,8 +74,7 @@ def serial_thread_func():
             parts = line.split(",")
 
             if len(parts) == 8:
-                pc_time_s = time.time() - start_time
-                writer.writerow([pc_time_s] + parts)
+                writer.writerow([now_s()] + parts)
                 sensor_count += 1
             else:
                 bad_count += 1
@@ -111,18 +118,51 @@ if audio_device is None:
 print("Recording to folder:", SESSION_NAME)
 
 
-with sf.SoundFile(
-    audio_file,
-    mode="w",
-    samplerate=AUDIO_SAMPLE_RATE,
-    channels=AUDIO_CHANNELS,
-    subtype="PCM_16",
-) as wav_file:
+with open(video_ts_file, "w", newline="") as vts_f, \
+     open(audio_ts_file, "w", newline="") as ats_f, \
+     sf.SoundFile(
+         audio_file,
+         mode="w",
+         samplerate=AUDIO_SAMPLE_RATE,
+         channels=AUDIO_CHANNELS,
+         subtype="PCM_16",
+     ) as wav_file:
+
+    video_ts_writer = csv.writer(vts_f)
+    audio_ts_writer = csv.writer(ats_f)
+
+    video_ts_writer.writerow([
+        "frame_idx",
+        "pc_time_s",
+    ])
+
+    audio_ts_writer.writerow([
+        "sample_start",
+        "frames",
+        "pc_time_s_callback",
+        "input_buffer_adc_time",
+        "current_time",
+    ])
 
     def audio_callback(indata, frames, time_info, status):
+        global audio_sample_index
+
         if status:
             print("Audio status:", status)
+
+        callback_time_s = now_s()
+
         wav_file.write(indata)
+
+        audio_ts_writer.writerow([
+            audio_sample_index,
+            frames,
+            callback_time_s,
+            time_info.inputBufferAdcTime,
+            time_info.currentTime,
+        ])
+
+        audio_sample_index += frames
 
     with sd.InputStream(
         device=audio_device,
@@ -131,39 +171,43 @@ with sf.SoundFile(
         dtype="int16",
         callback=audio_callback,
     ):
-        start_time = time.time()
+        start_time_ns = time.perf_counter_ns()
 
         t = threading.Thread(target=serial_thread_func)
         t.start()
 
-        video_count = 0
-        last_status = time.time()
-        next_frame_time = start_time
+        last_status = time.perf_counter()
+        next_frame_time = time.perf_counter()
 
-        while time.time() - start_time < DURATION:
-            now = time.time()
+        while now_s() < DURATION:
+            current_perf = time.perf_counter()
 
-            if now >= next_frame_time:
+            if current_perf >= next_frame_time:
+                frame_time_s = now_s()
                 frame = gsmini.capture_image()
 
                 if frame.shape[1] != width or frame.shape[0] != height:
                     frame = cv2.resize(frame, (width, height))
 
                 video_writer.write(frame)
+                video_ts_writer.writerow([video_count, frame_time_s])
                 video_count += 1
+
                 next_frame_time += 1.0 / GELSIGHT_FPS
 
-            if now - last_status >= 1.0:
-                elapsed = now - start_time
+            if current_perf - last_status >= 1.0:
+                elapsed = now_s()
                 print(
                     f"elapsed={elapsed:.1f}s, "
                     f"sensor_samples={sensor_count}, "
                     f"sensor_rate={sensor_count / elapsed:.1f} Hz, "
                     f"video_frames={video_count}, "
                     f"video_rate={video_count / elapsed:.1f} FPS, "
+                    f"audio_samples={audio_sample_index}, "
+                    f"audio_rate={audio_sample_index / elapsed:.1f} Hz, "
                     f"bad_lines={bad_count}"
                 )
-                last_status = now
+                last_status = current_perf
 
         stop_event.set()
         t.join()
@@ -174,6 +218,10 @@ video_writer.release()
 print("Saved:")
 print(sensor_file)
 print(video_file)
+print(video_ts_file)
 print(audio_file)
+print(audio_ts_file)
 print("Sensor samples:", sensor_count)
+print("Video frames:", video_count)
+print("Audio samples:", audio_sample_index)
 print("Bad lines:", bad_count)
