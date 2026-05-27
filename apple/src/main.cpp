@@ -37,20 +37,21 @@ AudioConnection patchCord1(i2sMic, 0, usbAudio, 0);
 AudioConnection patchCord2(i2sMic, 0, usbAudio, 1);
 
 // ================= SAMPLE RATE =================
-const unsigned long SAMPLE_INTERVAL_US = 5000; //
+const unsigned long SAMPLE_INTERVAL_US = 2500; //
 // 5000 -> 200Hz
 unsigned long lastSampleTime = 0;
 
 void setupBNOReports() {
-  long reportIntervalUs = 5000; // 
+  long acc_reportIntervalUs = 2500; //
+  long gyro_reportIntervalUs = 2500; 
 
-  if (!bno08x.enableReport(SH2_ACCELEROMETER, 5000)) {
+  if (!bno08x.enableReport(SH2_ACCELEROMETER, acc_reportIntervalUs)) {
     Serial.println("Could not enable accelerometer");
   }
 
   delay(20);
 
-  if (!bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, 5000)) {
+  if (!bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, gyro_reportIntervalUs)) {
     Serial.println("Could not enable gyroscope");
   }
 
@@ -112,7 +113,7 @@ void setup() {
   pc_ads1220.begin(ADS1220_CS_PIN, ADS1220_DRDY_PIN);
 
   pc_ads1220.set_pga_gain(PGA_GAIN_128);
-  pc_ads1220.set_data_rate(DR_1000SPS);   // closest above 400 Hz
+  pc_ads1220.set_data_rate(DR_1000SPS);   // 
   pc_ads1220.set_conv_mode_continuous();
 
   Serial.println("time_us,ax,ay,az,gx,gy,gz,load_raw");

@@ -2,9 +2,12 @@ import serial
 import csv
 import time
 import os
+import threading
 from datetime import datetime
 
 import cv2
+import sounddevice as sd
+import soundfile as sf
 import py3DCal as p3d
 
 
@@ -12,13 +15,64 @@ SERIAL_PORT = "/dev/tty.usbmodem135529601"
 BAUD = 2000000
 DURATION = 10
 
+AUDIO_DEVICE_NAME = "Teensy"
+AUDIO_SAMPLE_RATE = 44100
+AUDIO_CHANNELS = 1
+
 GELSIGHT_FPS = 30
+
 
 SESSION_NAME = datetime.now().strftime("session_%Y%m%d_%H%M%S")
 os.makedirs(SESSION_NAME, exist_ok=True)
 
 sensor_file = os.path.join(SESSION_NAME, "sensors.csv")
 video_file = os.path.join(SESSION_NAME, "gelsight.mp4")
+audio_file = os.path.join(SESSION_NAME, "audio.wav")
+
+
+stop_event = threading.Event()
+start_time = None
+
+sensor_count = 0
+bad_count = 0
+
+
+def serial_thread_func():
+    global sensor_count, bad_count
+
+    ser = serial.Serial(SERIAL_PORT, BAUD, timeout=0.01)
+    time.sleep(2)
+    ser.reset_input_buffer()
+
+    with open(sensor_file, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "pc_time_s",
+            "teensy_time_us",
+            "ax", "ay", "az",
+            "gx", "gy", "gz",
+            "load_raw",
+        ])
+
+        while not stop_event.is_set():
+            line = ser.readline().decode("utf-8", errors="ignore").strip()
+
+            if not line:
+                continue
+
+            if line.startswith("time_us") or line.startswith("#"):
+                continue
+
+            parts = line.split(",")
+
+            if len(parts) == 8:
+                pc_time_s = time.time() - start_time
+                writer.writerow([pc_time_s] + parts)
+                sensor_count += 1
+            else:
+                bad_count += 1
+
+    ser.close()
 
 
 # ---------- GelSight ----------
@@ -26,103 +80,100 @@ gsmini = p3d.GelsightMini()
 gsmini.connect()
 print("GelSight connected")
 
-# Capture one frame to get size
 first_frame = gsmini.capture_image()
 height, width = first_frame.shape[:2]
 
-fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 video_writer = cv2.VideoWriter(
     video_file,
-    fourcc,
+    cv2.VideoWriter_fourcc(*"mp4v"),
     GELSIGHT_FPS,
-    (width, height)
+    (width, height),
 )
 
 if not video_writer.isOpened():
     raise RuntimeError("Could not open MP4 video writer")
 
 
-# ---------- Serial ----------
-ser = serial.Serial(SERIAL_PORT, BAUD, timeout=0.01)
-time.sleep(2)
-ser.reset_input_buffer()
+# ---------- Audio ----------
+devices = sd.query_devices()
+audio_device = None
 
+for i, d in enumerate(devices):
+    if AUDIO_DEVICE_NAME.lower() in d["name"].lower() and d["max_input_channels"] > 0:
+        audio_device = i
+        print("Using audio device:", i, d["name"])
+        break
 
-sensor_header = [
-    "pc_time_s",
-    "teensy_time_us",
-    "ax", "ay", "az",
-    "gx", "gy", "gz",
-    "load_raw",
-]
+if audio_device is None:
+    raise RuntimeError("Could not find Teensy audio input device")
 
-sensor_count = 0
-video_count = 0
-bad_count = 0
-
-last_status = time.time()
-last_gelsight_capture = 0
-gelsight_interval = 1.0 / GELSIGHT_FPS
 
 print("Recording to folder:", SESSION_NAME)
 
 
-with open(sensor_file, "w", newline="") as sensor_f:
-    sensor_writer = csv.writer(sensor_f)
-    sensor_writer.writerow(sensor_header)
+with sf.SoundFile(
+    audio_file,
+    mode="w",
+    samplerate=AUDIO_SAMPLE_RATE,
+    channels=AUDIO_CHANNELS,
+    subtype="PCM_16",
+) as wav_file:
 
-    start = time.time()
+    def audio_callback(indata, frames, time_info, status):
+        if status:
+            print("Audio status:", status)
+        wav_file.write(indata)
 
-    # Write first frame
-    video_writer.write(first_frame)
-    video_count += 1
-    last_gelsight_capture = start
+    with sd.InputStream(
+        device=audio_device,
+        samplerate=AUDIO_SAMPLE_RATE,
+        channels=AUDIO_CHANNELS,
+        dtype="int16",
+        callback=audio_callback,
+    ):
+        start_time = time.time()
 
-    while time.time() - start < DURATION:
-        now = time.time()
-        pc_time_s = now - start
+        t = threading.Thread(target=serial_thread_func)
+        t.start()
 
-        # ---------- Read Teensy serial ----------
-        line = ser.readline().decode("utf-8", errors="ignore").strip()
+        video_count = 0
+        last_status = time.time()
+        next_frame_time = start_time
 
-        if line and not line.startswith("time_us") and not line.startswith("#"):
-            parts = line.split(",")
+        while time.time() - start_time < DURATION:
+            now = time.time()
 
-            if len(parts) == 8:
-                sensor_writer.writerow([pc_time_s] + parts)
-                sensor_count += 1
-            else:
-                bad_count += 1
+            if now >= next_frame_time:
+                frame = gsmini.capture_image()
 
-        # ---------- Capture GelSight frame ----------
-        if now - last_gelsight_capture >= gelsight_interval:
-            frame = gsmini.capture_image()
+                if frame.shape[1] != width or frame.shape[0] != height:
+                    frame = cv2.resize(frame, (width, height))
 
-            # Make sure frame size matches video size
-            if frame.shape[1] != width or frame.shape[0] != height:
-                frame = cv2.resize(frame, (width, height))
+                video_writer.write(frame)
+                video_count += 1
+                next_frame_time += 1.0 / GELSIGHT_FPS
 
-            video_writer.write(frame)
-            video_count += 1
-            last_gelsight_capture += gelsight_interval
+            if now - last_status >= 1.0:
+                elapsed = now - start_time
+                print(
+                    f"elapsed={elapsed:.1f}s, "
+                    f"sensor_samples={sensor_count}, "
+                    f"sensor_rate={sensor_count / elapsed:.1f} Hz, "
+                    f"video_frames={video_count}, "
+                    f"video_rate={video_count / elapsed:.1f} FPS, "
+                    f"bad_lines={bad_count}"
+                )
+                last_status = now
 
-        # ---------- Status ----------
-        if now - last_status >= 1.0:
-            elapsed = now - start
-            print(
-                f"elapsed={elapsed:.1f}s, "
-                f"sensor_samples={sensor_count}, "
-                f"video_frames={video_count}, "
-                f"bad_lines={bad_count}"
-            )
-            last_status = now
+        stop_event.set()
+        t.join()
 
 
-ser.close()
 video_writer.release()
 
 print("Saved:")
 print(sensor_file)
 print(video_file)
+print(audio_file)
 print("Sensor samples:", sensor_count)
-print("Video frames:", video_count)
+print("Bad lines:", bad_count)
